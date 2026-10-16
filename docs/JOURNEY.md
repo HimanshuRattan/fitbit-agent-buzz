@@ -101,18 +101,23 @@ Both hook sets were verified working end to end.
 
 ## Step 9: strength and count
 
-The setting has only three values, so there is no smooth strength control. A probe (`spike/haptics-probe.sh`) stepped through Low to Off, Off to High, High to Off and Off to Low, four seconds apart. Result: two taps, strong then gentle. **Switching to Off is silent**, switching to High taps strongly and switching to Low taps gently. That made three strengths possible:
+The setting has only three values (Off, Low, High), so smooth strength control was never possible. The hope was to get gentle-only or strong-only taps.
 
-- **Gentle**: Off then Low, repeated.
-- **Strong**: Off then High, repeated. Restoring a Low setting at the end adds one gentle tap.
-- **Mixed**: the original flip-and-restore, a strong then a gentle tap.
+A first probe (`spike/haptics-probe.sh`) stepped through Low to Off, Off to High, High to Off and Off to Low, four seconds apart, and produced two taps: strong, then gentle. That looked like "switching to Off is silent, switching to High or Low taps", which would allow gentle-only taps (Off then Low, repeated) and strong-only taps (Off then High, repeated).
 
-The menu got two sliders: strength and number of taps (1 to 5). The first version's sliders stopped responding after several changes. The fix rebuilds the menu each time it opens and makes the sliders act only on release. At the time of writing, the fix had not been confirmed yet.
+It was wrong. Gentle taps from a Low band did nothing, even with up to two seconds at Off. Strong with three repeats produced only two taps, strong then gentle. The rule that fits every observation:
+
+- **The band taps only when the intensity becomes a different real value than the last real one.** Becoming High taps strongly and becoming Low taps gently.
+- **Off does not count as a value.** Low to Off to Low is "no change" and stays silent.
+
+So every buzz is a flip between Low and High and back, which is always one strong and one gentle tap. The strength slider was removed. A **Vibrations** slider (1 to 5 flip pairs) remains.
+
+The first version of the menu's sliders also stopped responding after several changes. Rebuilding the menu each time it opens, and making the sliders act only on release, fixed that.
 
 ## What is possible, in short
 
 - Buzzing a Fitbit Air from a Mac on demand, with about one second of latency once connected.
-- Gentle, strong or mixed taps, repeated 1 to 5 times.
+- A strong-plus-gentle tap pair, repeated 1 to 5 times.
 - Triggering it from Claude Code and Codex hooks.
 - Handing the band back to the iPhone automatically.
 
@@ -121,7 +126,7 @@ The menu got two sliders: strength and number of taps (1 to 5). The first versio
 - Buzzing while the phone holds the band. The Air takes one connection, and the Mac cannot take it over.
 - Getting the band to the Mac without a manual step. Each session starts with force-quitting Google Health.
 - Any official route: no phone notification relay, no alarm API, no haptics API.
-- Fine-grained vibration strength. Only Off, Low and High exist.
+- Choosing the vibration strength. Only Off, Low and High exist, and only a change between Low and High taps, so every buzz is one strong and one gentle tap.
 - An idle buzz in Codex, which has no idle event.
 
 ## Open questions

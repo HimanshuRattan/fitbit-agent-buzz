@@ -4,16 +4,14 @@
 #   fitbit-buzz [single|double]
 #
 # Does nothing (exit 0) unless the app reports the Air is connected to this Mac.
-# The Air plays a short preview vibration whenever its haptics intensity changes: strong
-# when set to HIGH, gentle when set to LOW, and nothing when set to OFF. Each tap is built
-# from those changes, and the original intensity is restored at the end (which itself taps
-# if the last tap left a different value). The original is saved first so an interrupted
-# run is repaired by the next one.
+# The Air plays a short preview vibration when its haptics intensity changes to a different
+# real value: strong when it becomes HIGH, gentle when it becomes LOW. Switching to OFF and
+# back to the same value plays nothing, so every tap is a flip to the other level and back,
+# which feels like a strong then a gentle tap (or the reverse when the band is set to HIGH).
+# The original is saved first so an interrupted run is repaired by the next one.
 #
 # The menu bar app writes $STATE_DIR/settings:
-#   strength=gentle|mixed|strong   gentle: OFF->LOW taps, strong: OFF->HIGH taps,
-#                                  mixed: flip to the other level and back
-#   count=1..5                     taps per group; "double" plays two groups
+#   count=1..5   flip-and-restore taps per group; "double" plays two groups
 set -u
 
 STATE_DIR="$HOME/Library/Application Support/notify-fitbit"
@@ -35,7 +33,6 @@ trap 'rm -rf "$WORK"' EXIT
 
 # Protobuf payloads from the Android bridge's AirDirectSettingsProtocol.kt
 printf '\x0A\x01\x01' > "$WORK/read.bin"                 # SettingsRequest { HAPTICS }
-printf '\x0A\x04\x0A\x02\x08\x01' > "$WORK/1.bin"        # haptics_intensity = OFF
 printf '\x0A\x04\x0A\x02\x08\x02' > "$WORK/2.bin"        # haptics_intensity = LOW
 printf '\x0A\x04\x0A\x02\x08\x03' > "$WORK/3.bin"        # haptics_intensity = HIGH
 
@@ -70,17 +67,12 @@ original="$(read_intensity)" || { log "read failed, not buzzing"; exit 1; }
 [[ "$original" == 2 || "$original" == 3 ]] || { log "unexpected intensity $original"; exit 1; }
 flip=$(( original == 3 ? 2 : 3 ))
 
-STRENGTH=mixed
 COUNT=1
 if [[ -f "$STATE_DIR/settings" ]]; then
   while IFS='=' read -r key value; do
-    case "$key" in
-      strength) STRENGTH="$value" ;;
-      count)    COUNT="$value" ;;
-    esac
+    [[ "$key" == count ]] && COUNT="$value"
   done < "$STATE_DIR/settings"
 fi
-[[ "$STRENGTH" == (gentle|mixed|strong) ]] || STRENGTH=mixed
 [[ "$COUNT" == <1-5> ]] || COUNT=1
 
 case "$PATTERN" in
@@ -88,14 +80,10 @@ case "$PATTERN" in
   *)      groups=1 ;;
 esac
 
-current="$original"
 tap() {
-  case "$STRENGTH" in
-    gentle) set_intensity 1; sleep 0.25; set_intensity 2 || log "tap failed"; current=2 ;;
-    strong) set_intensity 1; sleep 0.25; set_intensity 3 || log "tap failed"; current=3 ;;
-    *)      set_intensity "$flip" || log "flip failed"; sleep 0.8
-            set_intensity "$original" || log "restore failed"; current="$original" ;;
-  esac
+  set_intensity "$flip" || log "flip failed"
+  sleep 0.8
+  set_intensity "$original" || log "restore failed"
 }
 
 echo "$original" > "$PENDING"
@@ -106,15 +94,10 @@ for (( g = 1; g <= groups; g++ )); do
   done
   (( g < groups )) && sleep 1.2
 done
-if [[ "$current" != "$original" ]]; then
-  sleep 0.6
-  set_intensity "$original" || log "restore failed"
-fi
-
 final="$(read_intensity)"
 if [[ "$final" == "$original" ]]; then
   rm -f "$PENDING"
-  log "$PATTERN buzz ok ($STRENGTH x$COUNT), intensity $original"
+  log "$PATTERN buzz ok (x$COUNT), intensity $original"
 else
   set_intensity "$original" && rm -f "$PENDING"
   log "WARNING: intensity read back ${final:-unknown}, expected $original; re-sent restore"

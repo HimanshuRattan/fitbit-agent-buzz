@@ -82,9 +82,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         test.isEnabled = link == .onMac
         menu.addItem(test)
         menu.addItem(.separator())
-        menu.addItem(sliderItem(title: strengthTitle(), maxValue: Double(strengths.count - 1),
-                                value: Double(strengths.firstIndex(of: strength) ?? 1),
-                                action: #selector(strengthChanged(_:))))
         menu.addItem(sliderItem(title: countTitle(), maxValue: 4, value: Double(count - 1),
                                 action: #selector(countChanged(_:))))
         menu.addItem(item("Open log", #selector(openLog)))
@@ -94,11 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
 
     // MARK: Buzz settings (read by bin/fitbit-buzz)
 
-    let strengths = ["gentle", "mixed", "strong"]
-    var strength = "mixed"
     var count = 1
 
-    func strengthTitle() -> String { "Strength: \(strength.capitalized)" }
     func countTitle() -> String { "Vibrations: \(count)" }
 
     /// A labelled slider with tick stops, embedded in the menu.
@@ -127,13 +121,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         if link == .onMac { buzz("single") }
     }
 
-    @objc func strengthChanged(_ slider: NSSlider) {
-        strength = strengths[slider.integerValue]
-        updateLabel(of: slider, to: strengthTitle())
-        saveSettings()
-        preview()
-    }
-
     @objc func countChanged(_ slider: NSSlider) {
         count = slider.integerValue + 1
         updateLabel(of: slider, to: countTitle())
@@ -147,14 +134,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
             guard parts.count == 2 else { continue }
-            if parts[0] == "strength", strengths.contains(parts[1]) { strength = parts[1] }
             if parts[0] == "count", let value = Int(parts[1]), (1...5).contains(value) { count = value }
         }
     }
 
     func saveSettings() {
         let url = stateDir.appendingPathComponent("settings")
-        try? "strength=\(strength)\ncount=\(count)\n".write(to: url, atomically: true, encoding: .utf8)
+        try? "count=\(count)\n".write(to: url, atomically: true, encoding: .utf8)
     }
 
     func item(_ title: String, _ action: Selector) -> NSMenuItem {

@@ -14,8 +14,8 @@ Tested with Claude Code in a terminal and with Codex. Harnesses that load the sa
 The Fitbit Air has no notification support and no public API for vibration. This project uses a trick found by [fitbit-air-notification-bridge](https://github.com/paceaitian/fitbit-air-notification-bridge):
 
 1. Your Mac connects to the Air over Bluetooth using Fitbit's open-source [Golden Gate](https://github.com/Fitbit/golden-gate) stack (Gattlink, then DTLS with the public bootstrap key, then CoAP).
-2. Whenever the band's vibration-intensity setting changes, it plays a short preview tap: strong when set to High, gentle when set to Low, silent when set to Off.
-3. A buzz is a quick sequence of those changes, after which the original setting is restored and verified.
+2. When the band's vibration-intensity setting changes between Low and High, it plays a short preview tap: strong when it becomes High, gentle when it becomes Low.
+3. A buzz flips the setting to the other level and back (a strong then a gentle tap when your band is on Low), then verifies the original setting is restored.
 
 A menu bar app holds the connection. Agent hooks call `bin/fitbit-buzz`, which sends the setting changes through it.
 
@@ -92,18 +92,15 @@ Hooks are global, so every agent session on the Mac buzzes. When the Mac is not 
 
 ## Buzz settings
 
-The menu has two sliders. Releasing either one plays a preview.
+The menu has a **Vibrations** slider (1 to 5). Each vibration is a strong tap followed by a gentle one, or the reverse if your band is set to High in Google Health. Releasing the slider plays a preview. The setting is stored in `~/Library/Application Support/notify-fitbit/settings`.
 
-- **Strength**: Gentle (soft taps only), Mixed (a strong then a soft tap), or Strong (strong taps only). Strong ends with one soft tap while the setting goes back to Low. Setting the band to High in Google Health avoids that, but also makes your alarms stronger.
-- **Vibrations**: 1 to 5 taps per pattern.
-
-Settings are stored in `~/Library/Application Support/notify-fitbit/settings`.
+There is no strength control. The band only taps when its intensity changes between Low and High, so every tap pair is one of each. Switching to Off and back to the same value plays nothing.
 
 ## Files and logs
 
 | Path | What it is |
 |---|---|
-| `app/FitbitBuzz.swift` | Menu bar app: finds the band, runs the stack tool, connect and release, sliders |
+| `app/FitbitBuzz.swift` | Menu bar app: finds the band, runs the stack tool, connect and release, vibrations slider |
 | `bin/fitbit-buzz` | The command hooks call; locks, buzzes, restores and verifies the setting |
 | `scripts/` | Build scripts for the Golden Gate tools, the app and the experiment tools |
 | `spike/` | The experiments used to work all this out (see the journey doc) |
