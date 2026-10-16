@@ -53,7 +53,9 @@ struct PanelView: View {
             Divider()
             footer
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.top, 20)
+        .padding(.bottom, 18)
         .frame(width: 300)
     }
 
@@ -200,8 +202,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, CBCe
         statusItem.button?.action = #selector(togglePanel)
         popover.behavior = .transient
         let host = NSHostingController(rootView: PanelView(app: self))
-        host.sizingOptions = [] // keep one fixed size instead of following content changes
         popover.contentViewController = host
+        // Without an explicit size the popover snaps its content to its 320x320 default on the
+        // first state change, clipping and shifting the panel. The content is a fixed size.
         popover.contentSize = host.view.fittingSize
         central = CBCentralManager(delegate: self, queue: nil)
         render()
