@@ -1,0 +1,15 @@
+# Build outputs
+build/
+vendor/
+
+# Compiled spike tools (build with scripts/build-spikes.sh)
+spike/scan
+spike/gatt
+spike/watch
+spike/direct
+spike/find-air
+
+# Local run artifacts: logs contain device IDs and timestamps
+*.log
+spike/.haptics-original
+.DS_Store

@@ -1,0 +1,122 @@
+#!/bin/zsh
+# Buzz the Fitbit Air through the connection held by the Fitbit Buzz menu bar app.
+#
+#   fitbit-buzz [single|double]
+#
+# Does nothing (exit 0) unless the app reports the Air is connected to this Mac.
+# The Air plays a short preview vibration whenever its haptics intensity changes: strong
+# when set to HIGH, gentle when set to LOW, and nothing when set to OFF. Each tap is built
+# from those changes, and the original intensity is restored at the end (which itself taps
+# if the last tap left a different value). The original is saved first so an interrupted
+# run is repaired by the next one.
+#
+# The menu bar app writes $STATE_DIR/settings:
+#   strength=gentle|mixed|strong   gentle: OFF->LOW taps, strong: OFF->HIGH taps,
+#                                  mixed: flip to the other level and back
+#   count=1..5                     taps per group; "double" plays two groups
+set -u
+
+STATE_DIR="$HOME/Library/Application Support/notify-fitbit"
+PATTERN="${1:-single}"
+
+[[ "$(cat "$STATE_DIR/state" 2>/dev/null)" == connected ]] || exit 0
+
+# Serialize buzzes: concurrent hooks would interleave flips and restores
+if [[ -z "${FITBIT_BUZZ_LOCKED:-}" ]]; then
+  FITBIT_BUZZ_LOCKED=1 exec /usr/bin/lockf -t 30 "$STATE_DIR/buzz.lock" "$0" "$@"
+fi
+
+ROOT="${0:A:h:h}"
+COAP="$ROOT/build/Fitbit Buzz.app/Contents/Resources/gg-coap-client"
+PENDING="$STATE_DIR/pending-original"
+LOG="$STATE_DIR/buzz.log"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# Protobuf payloads from the Android bridge's AirDirectSettingsProtocol.kt
+printf '\x0A\x01\x01' > "$WORK/read.bin"                 # SettingsRequest { HAPTICS }
+printf '\x0A\x04\x0A\x02\x08\x01' > "$WORK/1.bin"        # haptics_intensity = OFF
+printf '\x0A\x04\x0A\x02\x08\x02' > "$WORK/2.bin"        # haptics_intensity = LOW
+printf '\x0A\x04\x0A\x02\x08\x03' > "$WORK/3.bin"        # haptics_intensity = HIGH
+
+log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+
+coap() { # method payload-file -> prints response hex, fails on error
+  local out="$WORK/resp.bin"
+  rm -f "$out"
+  "$COAP" "$1" -q -t 3000 -r 1 -p "$2" -s "$out" coap://127.0.0.1:5683/settings > /dev/null 2>&1 || return 1
+  [[ -f "$out" ]] && xxd -p "$out" | tr -d '\n' | tr 'a-f' 'A-F'
+}
+
+read_intensity() { # prints 2 (LOW) or 3 (HIGH), matching the 0A040A0208xx response shape
+  local resp
+  resp="$(coap put "$WORK/read.bin")" || return 1
+  [[ "$resp" == *0A0208* ]] || return 1
+  echo $(( 16#${${resp##*0A0208}[1,2]} ))
+}
+
+set_intensity() { coap post "$WORK/$1.bin" > /dev/null; }
+
+# Repair a buzz that was interrupted between flip and restore
+if [[ -f "$PENDING" ]]; then
+  saved="$(cat "$PENDING")"
+  if [[ "$saved" == 2 || "$saved" == 3 ]] && set_intensity "$saved"; then
+    log "recovered intensity $saved from an interrupted buzz"
+    rm -f "$PENDING"
+  fi
+fi
+
+original="$(read_intensity)" || { log "read failed, not buzzing"; exit 1; }
+[[ "$original" == 2 || "$original" == 3 ]] || { log "unexpected intensity $original"; exit 1; }
+flip=$(( original == 3 ? 2 : 3 ))
+
+STRENGTH=mixed
+COUNT=1
+if [[ -f "$STATE_DIR/settings" ]]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      strength) STRENGTH="$value" ;;
+      count)    COUNT="$value" ;;
+    esac
+  done < "$STATE_DIR/settings"
+fi
+[[ "$STRENGTH" == (gentle|mixed|strong) ]] || STRENGTH=mixed
+[[ "$COUNT" == <1-5> ]] || COUNT=1
+
+case "$PATTERN" in
+  double) groups=2 ;;
+  *)      groups=1 ;;
+esac
+
+current="$original"
+tap() {
+  case "$STRENGTH" in
+    gentle) set_intensity 1; sleep 0.25; set_intensity 2 || log "tap failed"; current=2 ;;
+    strong) set_intensity 1; sleep 0.25; set_intensity 3 || log "tap failed"; current=3 ;;
+    *)      set_intensity "$flip" || log "flip failed"; sleep 0.8
+            set_intensity "$original" || log "restore failed"; current="$original" ;;
+  esac
+}
+
+echo "$original" > "$PENDING"
+for (( g = 1; g <= groups; g++ )); do
+  for (( t = 1; t <= COUNT; t++ )); do
+    tap
+    (( t < COUNT )) && sleep 0.6
+  done
+  (( g < groups )) && sleep 1.2
+done
+if [[ "$current" != "$original" ]]; then
+  sleep 0.6
+  set_intensity "$original" || log "restore failed"
+fi
+
+final="$(read_intensity)"
+if [[ "$final" == "$original" ]]; then
+  rm -f "$PENDING"
+  log "$PATTERN buzz ok ($STRENGTH x$COUNT), intensity $original"
+else
+  set_intensity "$original" && rm -f "$PENDING"
+  log "WARNING: intensity read back ${final:-unknown}, expected $original; re-sent restore"
+  exit 1
+fi
