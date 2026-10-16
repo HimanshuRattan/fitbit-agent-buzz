@@ -46,7 +46,8 @@ struct PanelView: View {
             .background(Capsule().fill(Color.secondary.opacity(0.12)))
             .animation(.easeOut(duration: 0.15), value: app.wantMac)
 
-            hint
+            // Fixed height so switching states never resizes the panel
+            hint.frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58, alignment: .leading)
             Divider()
             vibrations
             Divider()
@@ -198,7 +199,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, CBCe
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePanel)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PanelView(app: self))
+        let host = NSHostingController(rootView: PanelView(app: self))
+        host.sizingOptions = [] // keep one fixed size instead of following content changes
+        popover.contentViewController = host
+        popover.contentSize = host.view.fittingSize
         central = CBCentralManager(delegate: self, queue: nil)
         render()
     }
