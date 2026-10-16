@@ -401,9 +401,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, CBCe
     }
 
     func buzz(_ pattern: String) {
-        guard let script = Bundle.main.object(forInfoDictionaryKey: "FitbitBuzzScript") as? String else { return }
+        guard let script = Bundle.main.url(forResource: "fitbit-buzz", withExtension: nil) else { return }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: script)
+        process.executableURL = script
         process.arguments = [pattern]
         try? process.run()
     }

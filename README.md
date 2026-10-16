@@ -44,10 +44,11 @@ git clone https://github.com/HimanshuRattan/fitbit-agent-buzz.git
 cd fitbit-agent-buzz
 ./scripts/build-golden-gate.sh   # builds the Bluetooth stack tools into vendor/bin
 ./scripts/build-app.sh           # builds build/Fitbit Buzz.app
-open "build/Fitbit Buzz.app"     # allow Bluetooth when macOS asks
+ditto "build/Fitbit Buzz.app" ~/Applications/"Fitbit Buzz.app"
+open ~/Applications/"Fitbit Buzz.app"   # allow Bluetooth when macOS asks
 ```
 
-The app records the absolute path of `bin/fitbit-buzz` at build time, so rebuild it if you move the repo.
+Run the app from `~/Applications` rather than from the repo: if the repo sits in a protected folder such as `~/Documents`, macOS would otherwise keep asking for access. The app bundles its own copy of `bin/fitbit-buzz`, so rebuild and copy it again after changing that script. The hooks below call the repo copy, which uses the CoAP client inside the built app.
 
 ### Claude Code hooks
 

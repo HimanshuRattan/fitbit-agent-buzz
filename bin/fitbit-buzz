@@ -24,8 +24,13 @@ if [[ -z "${FITBIT_BUZZ_LOCKED:-}" ]]; then
   FITBIT_BUZZ_LOCKED=1 exec /usr/bin/lockf -t 30 "$STATE_DIR/buzz.lock" "$0" "$@"
 fi
 
-ROOT="${0:A:h:h}"
-COAP="$ROOT/build/Fitbit Buzz.app/Contents/Resources/gg-coap-client"
+# Inside the app bundle the CoAP client sits next to this script; from the repo, use the
+# copy in the built app.
+if [[ -x "${0:A:h}/gg-coap-client" ]]; then
+  COAP="${0:A:h}/gg-coap-client"
+else
+  COAP="${0:A:h:h}/build/Fitbit Buzz.app/Contents/Resources/gg-coap-client"
+fi
 PENDING="$STATE_DIR/pending-original"
 LOG="$STATE_DIR/buzz.log"
 WORK="$(mktemp -d)"

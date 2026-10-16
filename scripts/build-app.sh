@@ -21,12 +21,13 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSBluetoothAlwaysUsageDescription</key><string>Connects to your Fitbit Air to buzz it when your coding agent needs you.</string>
-<key>FitbitBuzzScript</key><string>$ROOT/bin/fitbit-buzz</string>
 </dict></plist>
 EOF
 
 [[ -x "$ROOT/vendor/bin/gg-stack-tool" ]] || { echo "Missing vendor/bin; run scripts/build-golden-gate.sh first"; exit 1; }
 swiftc -O "$ROOT/app/FitbitBuzz.swift" -o "$APP/Contents/MacOS/FitbitBuzz"
-cp "$ROOT/vendor/bin/gg-stack-tool" "$ROOT/vendor/bin/gg-coap-client" "$APP/Contents/Resources/"
+# Bundle the buzz script too, so the running app never reads from the repo (which may sit
+# in a privacy-protected folder like ~/Documents and trigger an access prompt)
+cp "$ROOT/vendor/bin/gg-stack-tool" "$ROOT/vendor/bin/gg-coap-client" "$ROOT/bin/fitbit-buzz" "$APP/Contents/Resources/"
 codesign --force --deep --sign - "$APP"
 echo "Built $APP"
