@@ -24,11 +24,11 @@ A menu bar app holds the connection. Agent hooks call `bin/fitbit-buzz`, which s
 The Air accepts a single Bluetooth connection, and the Google Health app on your phone keeps it permanently. So the Mac and the phone take turns:
 
 1. Force-quit Google Health on your phone.
-2. In the menu bar, choose **Connect to Mac**. You feel one buzz when connected.
+2. Click the menu bar icon and switch the toggle to **Mac**. You feel one buzz when connected.
 3. Reopen Google Health if you like. It shows "can't connect" while the Mac holds the band, which is expected.
-4. When you finish working, choose **Release to iPhone**. The phone reconnects by itself within a few seconds and syncs normally. The band keeps recording in the meantime.
+4. When you finish working, switch the toggle back to **iPhone**. The phone reconnects by itself within a few seconds and syncs normally. The band keeps recording in the meantime.
 
-If **Connect to Mac** keeps showing "Looking for Fitbit", the phone still holds the band (iOS sometimes relaunches Google Health in the background). Open Google Health, then force-quit it again.
+If the panel keeps showing "Looking for your band", the phone still holds the band (iOS sometimes relaunches Google Health in the background). Open Google Health, then force-quit it again.
 
 ## Requirements
 
@@ -92,7 +92,7 @@ Hooks are global, so every agent session on the Mac buzzes. When the Mac is not 
 
 ## Buzz settings
 
-The menu has a **Vibrations** slider (1 to 5). Each vibration is a strong tap followed by a gentle one, or the reverse if your band is set to High in Google Health. Releasing the slider plays a preview. The setting is stored in `~/Library/Application Support/notify-fitbit/settings`.
+The panel has a **Vibrations** row of five bars; tap one to choose 1 to 5. Each vibration is a strong tap followed by a gentle one, or the reverse if your band is set to High in Google Health. Choosing a value plays a preview. The setting is stored in `~/Library/Application Support/notify-fitbit/settings`.
 
 There is no strength control. The band only taps when its intensity changes between Low and High, so every tap pair is one of each. Switching to Off and back to the same value plays nothing.
 
@@ -100,7 +100,7 @@ There is no strength control. The band only taps when its intensity changes betw
 
 | Path | What it is |
 |---|---|
-| `app/FitbitBuzz.swift` | Menu bar app: finds the band, runs the stack tool, connect and release, vibrations slider |
+| `app/FitbitBuzz.swift` | Menu bar app (SwiftUI panel): finds the band, runs the stack tool, iPhone/Mac toggle, vibrations |
 | `bin/fitbit-buzz` | The command hooks call; locks, buzzes, restores and verifies the setting |
 | `scripts/` | Build scripts for the Golden Gate tools, the app and the experiment tools |
 | `spike/` | The experiments used to work all this out (see the journey doc) |

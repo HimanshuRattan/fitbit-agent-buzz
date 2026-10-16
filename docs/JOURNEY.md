@@ -112,7 +112,7 @@ It was wrong. Gentle taps from a Low band did nothing, even with up to two secon
 
 So every buzz is a flip between Low and High and back, which is always one strong and one gentle tap. The strength slider was removed. A **Vibrations** slider (1 to 5 flip pairs) remains.
 
-The first version of the menu's sliders also stopped responding after several changes. Rebuilding the menu each time it opens, and making the sliders act only on release, fixed that.
+The first version of the menu's sliders also stopped responding after several changes. Rebuilding the menu each time it opens, and making the sliders act only on release, fixed that. The menu was later replaced by a SwiftUI popover panel with an iPhone | Mac toggle and tappable vibration bars.
 
 ## What is possible, in short
 

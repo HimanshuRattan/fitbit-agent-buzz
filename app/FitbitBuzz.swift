@@ -1,18 +1,168 @@
 // Fitbit Buzz: menu bar app that hands the Fitbit Air between the iPhone and this Mac.
 //
-// "Connect to Mac" scans for the Air (service FD62; its ID changes when it rotates its
-// Bluetooth address), then runs Golden Gate's gg-stack-tool to hold a Gattlink/DTLS session.
+// "Mac" scans for the Air (service FD62; its ID changes when it rotates its Bluetooth
+// address), then runs Golden Gate's gg-stack-tool to hold a Gattlink/DTLS session.
 // While held, bin/fitbit-buzz sends CoAP requests through the stack's top port (5683).
-// "Release to iPhone" stops the stack; Google Health on the iPhone reconnects by itself.
+// "iPhone" stops the stack; Google Health on the iPhone reconnects by itself.
 // Google Health must be force-quit on the iPhone before the Mac can connect.
 import AppKit
 import CoreBluetooth
+import SwiftUI
 
 enum Link: Equatable {
     case onPhone, searching, connecting, onMac
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCentralManagerDelegate {
+// MARK: - Panel UI
+
+struct PanelView: View {
+    @ObservedObject var app: AppDelegate
+
+    var statusColor: Color {
+        switch app.link {
+        case .onMac: .green
+        case .searching, .connecting: .orange
+        case .onPhone: .secondary
+        }
+    }
+
+    var statusText: String {
+        switch app.link {
+        case .onPhone: "Band is on your iPhone"
+        case .searching: "Looking for your band"
+        case .connecting: "Connecting"
+        case .onMac: "Connected, buzzes on"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            HStack(spacing: 4) {
+                segment("iPhone", icon: "iphone", selected: !app.wantMac) { app.releaseToPhone() }
+                segment("Mac", icon: "laptopcomputer", selected: app.wantMac) { app.connectToMac() }
+            }
+            .padding(3)
+            .background(Capsule().fill(Color.secondary.opacity(0.12)))
+            .animation(.easeOut(duration: 0.15), value: app.wantMac)
+
+            hint
+            Divider()
+            vibrations
+            Divider()
+            footer
+        }
+        .padding(16)
+        .frame(width: 300)
+    }
+
+    /// One half of the iPhone | Mac toggle; tapping the selected half does nothing.
+    func segment(_ title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button { if !selected { action() } } label: {
+            Label(title, systemImage: icon)
+                .font(.body.weight(.medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .background(Capsule().fill(selected ? Color.accentColor : Color.clear))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    var header: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(statusColor.opacity(0.16))
+                Image(systemName: app.symbol)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(statusColor)
+            }
+            .frame(width: 40, height: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Fitbit Buzz").font(.headline)
+                HStack(spacing: 6) {
+                    Circle().fill(statusColor).frame(width: 7, height: 7)
+                    Text(statusText).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    @ViewBuilder var hint: some View {
+        switch app.link {
+        case .searching, .connecting:
+            HStack(alignment: .top, spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text(app.link == .searching
+                     ? "Force-quit Google Health on your iPhone. The band connects by itself."
+                     : "Opening a secure session with the band.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
+        case .onMac:
+            Text("You can reopen Google Health now. Switch back to iPhone when you're done so it syncs.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        case .onPhone:
+            Text("Switch to Mac to get buzzes while you work.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    var vibrations: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Vibrations").font(.subheadline.weight(.medium))
+                Spacer()
+                Text("\(app.count)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 6) {
+                ForEach(1...5, id: \.self) { n in
+                    Capsule()
+                        .fill(n <= app.count ? Color.accentColor : Color.secondary.opacity(0.2))
+                        .frame(height: 8)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture { app.setCount(n) }
+                        .help("\(n) vibration\(n == 1 ? "" : "s")")
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: app.count)
+            Text("Each vibration is a strong tap, then a soft one. Waiting prompts play it twice.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    var footer: some View {
+        HStack(spacing: 12) {
+            Button { app.testBuzz() } label: {
+                Label("Test buzz", systemImage: "waveform")
+            }
+            .disabled(app.link != .onMac)
+            Spacer()
+            Button { app.openLog() } label: { Image(systemName: "doc.text.magnifyingglass") }
+                .buttonStyle(.borderless)
+                .help("Open connection log")
+            Button("Quit") { app.quit() }
+                .buttonStyle(.borderless)
+                .help("Quit and release the band to your iPhone")
+        }
+    }
+}
+
+// MARK: - App
+
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, CBCentralManagerDelegate {
     let fitbitService = CBUUID(string: "FD62")
     let bootstrapKey = "BOOTSTRAP:810654E336ADCAB0A03C60F74AA0B6FB"
     let stateDir = FileManager.default.homeDirectoryForCurrentUser
@@ -20,12 +170,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
     let logURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Logs/notify-fitbit-stack.log")
 
+    @Published var link = Link.onPhone
+    @Published var wantMac = false
+    @Published var count = 1
+
     var statusItem: NSStatusItem!
+    let popover = NSPopover()
     var central: CBCentralManager!
     var stack: Process?
-    var link = Link.onPhone
-    var wantMac = false
     var reconnectTimer: Timer?
+
+    var symbol: String {
+        switch link {
+        case .onPhone: "applewatch.slash"
+        case .searching: "magnifyingglass"
+        case .connecting: "ellipsis"
+        case .onMac: "applewatch.radiowaves.left.and.right"
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
@@ -33,9 +195,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         writeState(connected: false)
         loadSettings()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let menu = NSMenu()
-        menu.delegate = self
-        statusItem.menu = menu
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePanel)
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: PanelView(app: self))
         central = CBCentralManager(delegate: self, queue: nil)
         render()
     }
@@ -44,88 +207,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         stopStack()
     }
 
-    // MARK: Menu
-
-    var statusText: String {
-        switch link {
-        case .onPhone: "Fitbit on iPhone"
-        case .searching: "Looking for Fitbit (force-quit Google Health on iPhone)"
-        case .connecting: "Connecting to Fitbit..."
-        case .onMac: "Fitbit on Mac: buzzes on"
+    @objc func togglePanel() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
         }
     }
 
     func render() {
-        let symbol = switch link {
-        case .onPhone: "applewatch.slash"
-        case .searching: "magnifyingglass"
-        case .connecting: "ellipsis"
-        case .onMac: "applewatch.radiowaves.left.and.right"
-        }
-        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: statusText)
+        statusItem.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Fitbit Buzz")
         statusItem.button?.image?.isTemplate = true
-    }
-
-    /// Rebuild the menu each time it opens, so controls never carry stale state between opens.
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        let statusLine = NSMenuItem(title: statusText, action: nil, keyEquivalent: "")
-        statusLine.isEnabled = false
-        menu.addItem(statusLine)
-        menu.addItem(.separator())
-        if wantMac {
-            menu.addItem(item("Release to iPhone", #selector(releaseToPhone)))
-        } else {
-            menu.addItem(item("Connect to Mac", #selector(connectToMac)))
-        }
-        let test = item("Test buzz", #selector(testBuzz))
-        test.isEnabled = link == .onMac
-        menu.addItem(test)
-        menu.addItem(.separator())
-        menu.addItem(sliderItem(title: countTitle(), maxValue: 4, value: Double(count - 1),
-                                action: #selector(countChanged(_:))))
-        menu.addItem(item("Open log", #selector(openLog)))
-        menu.addItem(.separator())
-        menu.addItem(item("Quit (releases Fitbit)", #selector(quit)))
     }
 
     // MARK: Buzz settings (read by bin/fitbit-buzz)
 
-    var count = 1
-
-    func countTitle() -> String { "Vibrations: \(count)" }
-
-    /// A labelled slider with tick stops, embedded in the menu.
-    func sliderItem(title: String, maxValue: Double, value: Double, action: Selector) -> NSMenuItem {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 46))
-        let label = NSTextField(labelWithString: title)
-        label.frame = NSRect(x: 20, y: 24, width: 200, height: 16)
-        label.font = .menuFont(ofSize: 0)
-        let slider = NSSlider(value: value, minValue: 0, maxValue: maxValue, target: self, action: action)
-        slider.frame = NSRect(x: 18, y: 2, width: 204, height: 22)
-        slider.numberOfTickMarks = Int(maxValue) + 1
-        slider.allowsTickMarkValuesOnly = true
-        slider.isContinuous = false // act once, on release
-        view.addSubview(label)
-        view.addSubview(slider)
-        let menuItem = NSMenuItem()
-        menuItem.view = view
-        return menuItem
-    }
-
-    func updateLabel(of slider: NSSlider, to text: String) {
-        (slider.superview?.subviews.first { $0 is NSTextField } as? NSTextField)?.stringValue = text
-    }
-
-    func preview() {
-        if link == .onMac { buzz("single") }
-    }
-
-    @objc func countChanged(_ slider: NSSlider) {
-        count = slider.integerValue + 1
-        updateLabel(of: slider, to: countTitle())
+    func setCount(_ value: Int) {
+        count = value
         saveSettings()
-        preview()
+        if link == .onMac { buzz("single") } // preview
     }
 
     func loadSettings() {
@@ -133,20 +235,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
-            if parts[0] == "count", let value = Int(parts[1]), (1...5).contains(value) { count = value }
+            if parts.count == 2, parts[0] == "count", let value = Int(parts[1]), (1...5).contains(value) {
+                count = value
+            }
         }
     }
 
     func saveSettings() {
         let url = stateDir.appendingPathComponent("settings")
         try? "count=\(count)\n".write(to: url, atomically: true, encoding: .utf8)
-    }
-
-    func item(_ title: String, _ action: Selector) -> NSMenuItem {
-        let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        menuItem.target = self
-        return menuItem
     }
 
     func setLink(_ next: Link) {
@@ -160,12 +257,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         }
     }
 
-    @objc func connectToMac() {
+    func connectToMac() {
         wantMac = true
         startSearch()
     }
 
-    @objc func releaseToPhone() {
+    func releaseToPhone() {
         wantMac = false
         central.stopScan()
         stopStack()
@@ -173,11 +270,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, CBCent
         render()
     }
 
-    @objc func testBuzz() { buzz("single") }
+    func testBuzz() { buzz("single") }
 
-    @objc func openLog() { NSWorkspace.shared.open(logURL) }
+    func openLog() { NSWorkspace.shared.open(logURL) }
 
-    @objc func quit() {
+    func quit() {
         stopStack()
         NSApp.terminate(nil)
     }
