@@ -113,3 +113,7 @@ Runtime state and the buzz log live in `~/Library/Application Support/notify-fit
 
 - [Golden Gate](https://github.com/Fitbit/golden-gate) by Fitbit, Apache-2.0. Not vendored here; `scripts/build-golden-gate.sh` builds it from source.
 - [fitbit-air-notification-bridge](https://github.com/paceaitian/fitbit-air-notification-bridge), Apache-2.0, an Android project that discovered the haptics-setting trick and the bootstrap session. This project ports the idea to macOS and agent hooks.
+
+## License
+
+[MIT](LICENSE). Golden Gate and fitbit-air-notification-bridge keep their own Apache-2.0 licenses; this repo only builds Golden Gate from source and does not include it.
