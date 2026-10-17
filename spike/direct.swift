@@ -4,10 +4,12 @@ import CoreBluetooth
 import Foundation
 
 // Usage: direct <air-peripheral-id> [timeout-seconds]   (get the ID from ./find-air)
-guard let airID = UUID(uuidString: CommandLine.arguments.dropFirst().first ?? "") else {
+let parsedID = UUID(uuidString: CommandLine.arguments.dropFirst().first ?? "")
+if parsedID == nil {
     print("usage: direct <air-peripheral-id> [timeout-seconds]")
     exit(2)
 }
+let airID = parsedID!
 let timeoutSeconds = Double(CommandLine.arguments.dropFirst(2).first ?? "") ?? 60
 let gattlinkService = CBUUID(string: "ABBAFF00-E56A-484C-B832-8B17CF6CBFE8")
 
